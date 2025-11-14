@@ -1,122 +1,56 @@
 #include <iostream>
-
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <sys/types.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <linux/if_packet.h>
-#include <net/if.h>
-#include <linux/if_ether.h>
-#include <arpa/inet.h>
+
+#include "EthernetFrameSender.h"
+#include "EthernetFrameReceiver.h"
+
+using discoveryservice::daemon::io::FrameSender;
+using discoveryservice::daemon::io::FrameReceiver;
 
 int main()
 {
-    const char* interfaceName {"enp0s8"};
+    FrameReceiver frameReceiver;
+    frameReceiver.initSocket();
 
-    int sock {-1};
+    FrameSender frameSender;
+    int status {frameSender.sendFrame()};
 
-    sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (sock < 0) {
-        // error
-        std::cout << "socket is -1" << std::endl;
-        return 1;
-    }
-    std::cout << "socket is: " << sock << std::endl;
+    /*
+    pid_t childId {fork()};
 
-    ifreq ifr;
-    std::memset(&ifr, 0, sizeof(ifr));
-    std::strncpy(ifr.ifr_name, interfaceName, IFNAMSIZ - 1);
-
-    if (ioctl(sock, SIOCGIFINDEX, &ifr) < 0) {
-        // error
-        perror("SIOCGIFINDEX");
-        std::cout << "ioctl SIOCGIFINDEX failed!" << std::endl;
-        if (sock >= 0) {
-            close(sock);
-        }
-        return 1;
-    }
-    int ifIndex {ifr.ifr_ifindex};
-    std::cout << "ifIndex is: " << ifIndex << std::endl;
-
-    if (ioctl(sock, SIOCGIFHWADDR, &ifr) < 0) {
-        // error
-        perror("SIOCGIFHWADDR");
-        std::cout << "ioctl SIOCGIFHWADDR failed!" << std::endl;
-        if (sock >= 0) {
-            close(sock);
-        }
-        return 1;
-    }
-    unsigned char src_mac[6];
-    std::memcpy(src_mac, ifr.ifr_hwaddr.sa_data, 6);
-
-    // build Ethernet frame
-    const unsigned char dst_mac[6] {0xff};
-    const uint16_t ethertype {0x88B5};
-    const unsigned char payload[] = "DISCOVER_FROM_DEVICE";
-    const size_t payloadLength = sizeof(payload);
-
-    const size_t frameLength {14 + payloadLength};
-
-    if (frameLength > 1500 + 14) {
-        // error
-        std::cout << "payload to large!" << std::endl;
-        if (sock >= 0) {
-            close(sock);
-        }
-        return 1;
+    if (childId < 0) {
+        exit(EXIT_FAILURE);
     }
 
-    unsigned char* frame {new unsigned char[frameLength]};
-
-    std::memcpy(frame + 0, dst_mac, 6);
-    std::memcpy(frame + 6, src_mac, 6);
-    uint16_t ethertype_be {htons(ethertype)};
-    std::memcpy(frame + 12, &ethertype_be, 2);
-
-    std::memcpy(frame + 14, payload, payloadLength);
-
-    // prepare for sending
-    sockaddr_ll sll;
-    std::memset(&sll, 0, sizeof(sll));
-    sll.sll_family = AF_PACKET;
-    sll.sll_ifindex = ifIndex;
-    sll.sll_halen = ETH_ALEN;
-    std::memcpy(sll.sll_addr, dst_mac, 6);
-
-    // optionally set socket to allow broadcast
-    int on {1};
-    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0) {
-        // warn
-        std::cout << "failed to set socket to broadcast";
+    if (childId > 0) {
+        exit(EXIT_SUCCESS);
     }
 
-    // send frame
-    ssize_t sent {sendto(sock, frame, frameLength, 0, (sockaddr*)&sll, sizeof(sll))};
-    if (sent < 0) {
-        // error
-        std::cout << "failed to sent frame";
-        if (sock >= 0) {
-            close(sock);
-        }
-        delete [] frame;
-        return 1;
-    }
-    else if ((size_t) sent != frameLength) {
-        // error
-        std::cout << "partial send";
-        if (sock >= 0) {
-            close(sock);
-        }
-        delete [] frame;
-        return 1;
+    setsid();
+
+    childId = fork();
+    if (childId < 0) {
+        exit(EXIT_FAILURE);
     }
 
-    std::cout << "frame sent successfully" << std::endl;
+    if (childId > 0) {
+        exit(EXIT_SUCCESS);
+    }
 
+    // now we are in the daemon process
+    pid_t pid {getpid()};
+    */
+
+    size_t iter {0};
+    size_t maxIter {5};
+
+    while (iter++ < maxIter) {
+        frameReceiver.pollFrame();
+        
+        sleep(1);
+        std::cout << "iter: " << iter << std::endl;
+    }
 
     return 0;
 }
