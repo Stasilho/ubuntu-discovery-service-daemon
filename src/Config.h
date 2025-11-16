@@ -10,7 +10,11 @@ class Config
 public:
     virtual ~Config() = default;
 
-    virtual std::string getServiceId() const = 0;
+    virtual const std::string& getServiceId() const = 0;
+
+    virtual size_t getNotificationPeriodUsec() const = 0;
+
+    virtual size_t getConnectionExpirePeriodSec() const = 0;
 };
 
 }; // namespace discoveryservice::daemon

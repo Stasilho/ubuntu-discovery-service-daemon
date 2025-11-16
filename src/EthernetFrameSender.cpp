@@ -25,36 +25,24 @@ using discoveryservice::daemon::Config;
 namespace discoveryservice::daemon::io
 {
 
-Status FrameSender::initSockets(
+Status FrameSender::initOutputSockets(
     const std::vector<std::string>& ifNames,
     std::vector<EthInterface>& ethInterfaces)
 {
-    for (const auto& ifName : ifNames) {
-        std::cout << "building socket for if: " << ifName << std::endl;
-        
+    for (const auto& ifName : ifNames) {        
         EthInterface ethInterface {.name = ifName};
 
-        ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-        if (ethInterface.socketFd < 0) {
+        if (ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)) < 0) {
             return LAST_ERROR_STATUS;
         }
-        std::cout << "socket fd: " << ethInterface.socketFd << std::endl;
 
-        // request for interface index.
-        ifreq ifr;
-        std::memset(&ifr, 0, sizeof(ifr));
-        std::strncpy(ifr.ifr_name, ifName.c_str(), IFNAMSIZ - 1);
-        if (ioctl(ethInterface.socketFd, SIOCGIFINDEX, &ifr) < 0) {
+        if (ethInterface.index = lookupInterfaceIndex(ethInterface.socketFd, ifName) < 0) {
             return LAST_ERROR_STATUS;
         }
-        ethInterface.index = ifr.ifr_ifindex;
-        std::cout << "ethInterface index: " << ethInterface.index << std::endl;
 
-        // request device MAC
-        if (ioctl(ethInterface.socketFd, SIOCGIFHWADDR, &ifr) < 0) {
+        if (lookupInterfaceMac(ethInterface.socketFd, ethInterface.deviceMac) != 0) {
             return LAST_ERROR_STATUS;
         }
-        std::memcpy(ethInterface.deviceMac.data(), ifr.ifr_hwaddr.sa_data, 6);
 
         ethInterfaces.push_back(std::move(ethInterface));
     }

@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 
+#include "EthernetFrameIO.h"
 #include "Status.h"
 #include "EthInterface.h"
 
@@ -13,15 +14,17 @@ namespace discoveryservice::daemon
 class Config;
 }
 
+
+
 namespace discoveryservice::daemon::io
 {
 
-class FrameSender
+class FrameSender : public EthernetFrameIO
 {
 public:
     virtual ~FrameSender() = default;
 
-    Status initSockets(
+    Status initOutputSockets(
         const std::vector<std::string>& ifNames,
         std::vector<EthInterface>& ethInterfaces);
 
