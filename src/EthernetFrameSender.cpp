@@ -32,15 +32,15 @@ Status FrameSender::initOutputSockets(
     for (const auto& ifName : ifNames) {        
         EthInterface ethInterface {.name = ifName};
 
-        if (ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)) < 0) {
+        if ((ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
             return LAST_ERROR_STATUS;
         }
 
-        if (ethInterface.index = lookupInterfaceIndex(ethInterface.socketFd, ifName) < 0) {
+        if ((ethInterface.index = lookupInterfaceIndex(ethInterface.socketFd, ifName)) < 0) {
             return LAST_ERROR_STATUS;
         }
 
-        if (lookupInterfaceMac(ethInterface.socketFd, ethInterface.deviceMac) != 0) {
+        if (lookupInterfaceMac(ethInterface.socketFd, ifName, ethInterface.deviceMac) != 0) {
             return LAST_ERROR_STATUS;
         }
 
@@ -86,7 +86,6 @@ Status FrameSender::sendNotificationFrame(
     if (sent < 0 || sent < FRAME_LEN) {
         return LAST_ERROR_STATUS;
     }
-    perror("sendto");  // remove later
 
     return Status::success();
 }

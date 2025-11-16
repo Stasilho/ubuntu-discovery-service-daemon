@@ -38,11 +38,11 @@ Status FrameReceiver::initInputSockets(
     for (const auto& ifName : ifNames) { 
         EthInterface ethInterface {.name = ifName};
 
-        if (ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW | SOCK_NONBLOCK, htons(ETH_P_ALL)) < 0) {
+        if ((ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW | SOCK_NONBLOCK, htons(ETH_P_ALL))) < 0) {
             return LAST_ERROR_STATUS;
         }
 
-        if (ethInterface.index = lookupInterfaceIndex(ethInterface.socketFd, ifName) < 0) {
+        if ((ethInterface.index = lookupInterfaceIndex(ethInterface.socketFd, ifName)) < 0) {
             return LAST_ERROR_STATUS;
         }
 
