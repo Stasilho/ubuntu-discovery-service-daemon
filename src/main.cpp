@@ -1,21 +1,14 @@
+
 #include <iostream>
-#include <sys/types.h>
-#include <unistd.h>
+#include <memory>
 
-#include "EthernetFrameSender.h"
-#include "EthernetFrameReceiver.h"
 
-using discoveryservice::daemon::io::FrameSender;
-using discoveryservice::daemon::io::FrameReceiver;
+#include "Session.h"
+
+using discoveryservice::daemon::Session;
 
 int main()
 {
-    FrameReceiver frameReceiver;
-    frameReceiver.initSocket();
-
-    FrameSender frameSender;
-    int status {frameSender.sendFrame()};
-
     /*
     pid_t childId {fork()};
 
@@ -42,15 +35,6 @@ int main()
     pid_t pid {getpid()};
     */
 
-    size_t iter {0};
-    size_t maxIter {5};
-
-    while (iter++ < maxIter) {
-        frameReceiver.pollFrame();
-        
-        sleep(1);
-        std::cout << "iter: " << iter << std::endl;
-    }
-
-    return 0;
+    std::unique_ptr<Session> session {new Session()};
+    return session->run();
 }

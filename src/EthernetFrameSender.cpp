@@ -9,106 +9,98 @@
 #include <sys/ioctl.h>
 #include <linux/if_packet.h>
 #include <net/if.h>
+
 #include <linux/if_ether.h>
 #include <arpa/inet.h>
+
+#include "Config.h"
+
+#define HEADER_LEN 14
+#define PAYLOAD_LEN 32
+#define FRAME_LEN 46
+#define LAST_ERROR_STATUS Status::error(std::strerror(errno))
+
+using discoveryservice::daemon::Config;
 
 namespace discoveryservice::daemon::io
 {
 
-FrameSender::~FrameSender()
+Status FrameSender::initSockets(
+    const std::vector<std::string>& ifNames,
+    std::vector<EthInterface>& ethInterfaces)
 {
-    if (m_socket >= 0) {
-        close(m_socket);
+    for (const auto& ifName : ifNames) {
+        std::cout << "building socket for if: " << ifName << std::endl;
+        
+        EthInterface ethInterface {.name = ifName};
+
+        ethInterface.socketFd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+        if (ethInterface.socketFd < 0) {
+            return LAST_ERROR_STATUS;
+        }
+        std::cout << "socket fd: " << ethInterface.socketFd << std::endl;
+
+        // request for interface index.
+        ifreq ifr;
+        std::memset(&ifr, 0, sizeof(ifr));
+        std::strncpy(ifr.ifr_name, ifName.c_str(), IFNAMSIZ - 1);
+        if (ioctl(ethInterface.socketFd, SIOCGIFINDEX, &ifr) < 0) {
+            return LAST_ERROR_STATUS;
+        }
+        ethInterface.index = ifr.ifr_ifindex;
+        std::cout << "ethInterface index: " << ethInterface.index << std::endl;
+
+        // request device MAC
+        if (ioctl(ethInterface.socketFd, SIOCGIFHWADDR, &ifr) < 0) {
+            return LAST_ERROR_STATUS;
+        }
+        std::memcpy(ethInterface.deviceMac.data(), ifr.ifr_hwaddr.sa_data, 6);
+
+        ethInterfaces.push_back(std::move(ethInterface));
     }
 
-    delete [] m_frame;
-    m_frame = nullptr;
+    return Status::success();
 }
 
-int FrameSender::sendFrame()
+Status FrameSender::sendNotificationFrame(
+    Config* config, 
+    const EthInterface& ethInterface)
 {
-    const char* interfaceName {"enp0s8"};
-
-    m_socket = socket(AF_PACKET, SOCK_RAW, htons(0x88B5));  // ETH_P_ALL
-    if (m_socket < 0) {
-        std::cout << "socket is -1" << std::endl;
-        return 1;
-    }
-    std::cout << "sender socket is: " << m_socket << std::endl;
-
-    ifreq ifr;
-    std::memset(&ifr, 0, sizeof(ifr));
-    std::strncpy(ifr.ifr_name, interfaceName, IFNAMSIZ - 1);
-
-    if (ioctl(m_socket, SIOCGIFINDEX, &ifr) < 0) {
-        perror("SIOCGIFINDEX");
-        return 1;
-    }
-    int ifIndex {ifr.ifr_ifindex};
-    std::cout << "sender ifIndex is: " << ifIndex << std::endl;
-
-    if (ioctl(m_socket, SIOCGIFHWADDR, &ifr) < 0) {
-        perror("SIOCGIFHWADDR");
-        return 1;
-    }
-    unsigned char src_mac[6];
-    std::memcpy(src_mac, ifr.ifr_hwaddr.sa_data, 6);
-
     // build Ethernet frame
-    const unsigned char dst_mac[6] {0xff};
+    const unsigned char dst_mac[6] {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     const uint16_t ethertype {0x88B5};
-    const unsigned char payload[] = "DISCOVER_FROM_DEVICE";
-    const size_t payloadLength = sizeof(payload);
 
-    const size_t frameLength {14 + payloadLength};
+    unsigned char frame[FRAME_LEN];
 
-    if (frameLength > 1500 + 14) {
-        // error
-        std::cout << "payload to large!" << std::endl;
-        return 1;
-    }
+    std::memcpy(frame + 0, dst_mac, 6);
+    std::memcpy(frame + 6, ethInterface.deviceMac.data(), 6);
+    uint16_t ethertypeNetwork {htons(ethertype)};
+    std::memcpy(frame + 12, &ethertypeNetwork, 2);
 
-    m_frame = new unsigned char[frameLength];
-
-    std::memcpy(m_frame + 0, dst_mac, 6);
-    std::memcpy(m_frame + 6, src_mac, 6);
-    uint16_t ethertype_be {htons(ethertype)};
-    std::memcpy(m_frame + 12, &ethertype_be, 2);
-
-    std::memcpy(m_frame + 14, payload, payloadLength);
+    std::memcpy(frame + 14, config->getServiceId().c_str(), PAYLOAD_LEN);
 
     // prepare for sending
     sockaddr_ll sll;
     std::memset(&sll, 0, sizeof(sll));
     sll.sll_family = AF_PACKET;
-    sll.sll_ifindex = ifIndex;
+    sll.sll_ifindex = ethInterface.index;
     sll.sll_halen = ETH_ALEN;
     std::memcpy(sll.sll_addr, dst_mac, 6);
 
     // optionally set socket to allow broadcast
     int on {1};
-    if (setsockopt(m_socket, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0) {
-        // warn
+    if (setsockopt(ethInterface.socketFd, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0) {
         std::cout << "failed to set socket to broadcast";
     }
 
     // send frame
-    ssize_t sent {sendto(m_socket, m_frame, frameLength, 0, (sockaddr*)&sll, sizeof(sll))};
-    if (sent < 0) {
-        // error
-        std::cout << "failed to sent frame";
-        return 1;
+    ssize_t sent {sendto(ethInterface.socketFd, frame, FRAME_LEN, 0, (sockaddr*)&sll, sizeof(sll))};
+    if (sent < 0 || sent < FRAME_LEN) {
+        return LAST_ERROR_STATUS;
     }
-    else if ((size_t) sent != frameLength) {
-        // error
-        std::cout << "partial send";
-        return 1;
-    }
+    perror("sendto");  // remove later
 
-    std::cout << "frame sent successfully" << std::endl;
-
-
-    return 0;
+    return Status::success();
 }
 
 } // namespace discoveryservice::daemon::io

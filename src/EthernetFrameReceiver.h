@@ -1,5 +1,4 @@
-#ifndef ETHERNET_FRAME_RECEIVER_H
-#define ETHERNET_FRAME_RECEIVER_H
+#pragma once
 
 #include <sys/epoll.h>
 
@@ -24,5 +23,3 @@ private:
 };
 
 } // namespace discoveryservice::daemon::io
-
-#endif // ETHERNET_FRAME_RECEIVER__H

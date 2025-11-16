@@ -37,7 +37,7 @@ int FrameReceiver::initSocket()
     //const size_t wantLength {std::strlen(want)};
 
     // open AF_PACKET socket
-    m_socket = socket(AF_PACKET, SOCK_RAW | SOCK_NONBLOCK, htons(0x88B5));  //  ETH_P_ALL
+    m_socket = socket(AF_PACKET, SOCK_RAW | SOCK_NONBLOCK, htons(ETH_P_ALL));  //  ETH_P_ALL, 0x88B5
     if (m_socket < 0) {
         std::perror("socket");
         return 1;
@@ -91,23 +91,21 @@ void FrameReceiver::pollFrame()
 {
     epoll_event repollFds[1];
 
-    while (1) {
-        std::cout << "waiting for frame..." << std::endl;
-        int evCount = epoll_wait(m_epollFd, repollFds, 1, -1);
-        std::cout << "received events: " << evCount << std::endl;
-        for (int i {}; i < evCount; ++i) {
-            if (repollFds[i].events & EPOLLIN) {
-                std::cout << "got the event for our socket" << std::endl;
+    //std::cout << "waiting for frame..." << std::endl;
+    int evCount = epoll_wait(m_epollFd, repollFds, 1, 0);
+    //std::cout << "received events: " << evCount << std::endl;
+    for (int i {}; i < evCount; ++i) {
+        if (repollFds[i].events & EPOLLIN) {
+            std::cout << "got the event for our socket" << std::endl;
 
-                ssize_t n {recvfrom(m_socket, m_frame, m_frameSize, 0, nullptr, nullptr)};
-                if (n < 0) {
-                    if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                        perror("recvfrom");
-                    }
+            ssize_t n {recvfrom(m_socket, m_frame, m_frameSize, 0, nullptr, nullptr)};
+            if (n < 0) {
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    perror("recvfrom");
                 }
-                else {
-                    std::cout << "received " << n << " bytes." << std::endl;
-                }
+            }
+            else {
+                std::cout << "received " << n << " bytes." << std::endl;
             }
         }
     }
