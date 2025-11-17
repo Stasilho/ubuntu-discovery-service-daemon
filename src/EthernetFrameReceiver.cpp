@@ -78,12 +78,11 @@ std::vector<EthernetConnection> FrameReceiver::pollInputFrames(Config* config)
     int evCount = epoll_wait(m_epollFd, repollFds.data(), repollFds.size(), 0);
     for (int i {}; i < evCount; ++i) {
         if (repollFds[i].events & EPOLLIN) {
-            std::cout << "got the event for our socket" << std::endl; // remove!
-
             ssize_t numBytes {recvfrom(repollFds[i].data.fd, m_frame, INPUT_FRAME_SIZE, 0, nullptr, nullptr)};
             if (numBytes < 0) {
                 if (errno != EWOULDBLOCK && errno != EAGAIN) {
                     perror("recvfrom");
+                    continue;
                 }
             }
             else if (numBytes >= FRAME_LEN) {

@@ -53,6 +53,8 @@ private:
     void emitNotifications();
 
     std::string getInterfaceName(int socketFd) const;
+
+    void printMacAddress(const std::array<unsigned char, 6>& mac) const; // for testing
 };
 
 } // namespace discoveryservice::daemon

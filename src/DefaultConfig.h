@@ -21,7 +21,7 @@ private:
 
     size_t m_notificationPeriodUsec {1000000};  // 1 sec
 
-    size_t m_connectionExpirePeriodSec {30};
+    size_t m_connectionExpirePeriodSec {10};
 };
 
 }; // namespace discoveryservice::daemon

@@ -108,7 +108,7 @@ void Session::updateConnections(const std::vector<EthernetConnection>& newConnec
             auto& connections {m_connections.at(ifName)};
             auto connectionPtr {std::find_if(connections.begin(), connections.end(), 
                 [&ethConnection] (const EthernetConnection& ec) { 
-                    return ec.deviceMac == ethConnection.deviceMac; 
+                    return ec.deviceMac == ethConnection.deviceMac;
                 }
             )};
 
@@ -132,11 +132,11 @@ void Session::removeExpiredConnections()
         .count();
 
     for (auto& [ifName, connections] : m_connections) {
-        std::remove_if(connections.begin(), connections.end(), 
+        connections.erase(std::remove_if(connections.begin(), connections.end(), 
             [connectionExpirePeriodMsec, nowMsec] (const EthernetConnection& ec) { 
                 return (nowMsec - ec.lastTimeSeenActiveMsec) > connectionExpirePeriodMsec; 
             }
-        );
+        ), connections.end());
     }
 }
 
@@ -152,6 +152,12 @@ std::string Session::getInterfaceName(int socketFd) const
     auto ptr {std::find_if(m_inputSockets.begin(), m_inputSockets.end(), 
         [socketFd] (const EthInterface& eth) { return eth.socketFd == socketFd; })};
     return ptr != m_inputSockets.end() ? ptr->name : std::string{};
+}
+
+void Session::printMacAddress(const std::array<unsigned char, 6> &mac) const
+{
+    std::printf("%.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n", 
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 } // namespace discoveryservice::daemon
