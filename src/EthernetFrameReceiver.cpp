@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/epoll.h>
 #include <linux/if_packet.h>
 #include <net/if.h>
 #include <linux/if_ether.h>

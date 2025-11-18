@@ -1,22 +1,17 @@
 #include "Session.h"
 
 #include <iostream>
-#include <string>
 #include <unistd.h>
-#include <algorithm>
-#include <chrono>
 
 #include "Status.h"
 #include "Config.h"
 #include "DefaultConfig.h"
-#include "EthernetFrameSender.h"
-#include "EthernetFrameReceiver.h"
-#include "EthernetUtils.h"
+#include "ConnectionHandler.h"
+#include "TcpRequestProcessor.h"
+#include "TcpServer.h"
 
 using discoveryservice::daemon::io::Status;
-using discoveryservice::daemon::io::EthInterface;
-using discoveryservice::daemon::io::FrameSender;
-using discoveryservice::daemon::io::FrameReceiver;
+using discoveryservice::daemon::io::TcpServer;
 
 /**
  * estimated out of condition for 30 second refresh rate and 10,000 active connection handling 
@@ -29,6 +24,7 @@ namespace discoveryservice::daemon
 
 Session::Session()
     : m_config {new DefaultConfig()}
+    , m_connectionHandler {new ConnectionHandler{}}
 {
 }
 
@@ -37,13 +33,14 @@ Session::~Session()
     delete m_config;
     m_config = nullptr;
 
-    delete m_frameSender;
-    m_frameSender = nullptr;
+    delete m_connectionHandler;
+    m_connectionHandler = nullptr;
 
-    delete m_frameReceiver;
-    m_frameReceiver = nullptr;
+    delete m_tcpServer;
+    m_tcpServer = nullptr;
 
-    io::closeSockets(m_outputSockets);
+    delete m_tcpRequestProcessor;
+    m_tcpRequestProcessor = nullptr;
 }
 
 int Session::run()
@@ -56,15 +53,14 @@ int Session::run()
     size_t notificationElapsedTime {};
 
     while (true) {
-        std::vector<EthernetConnection> newConnections {m_frameReceiver->pollInputFrames(m_config)};
-        updateConnections(newConnections);
-        removeExpiredConnections();
+        m_connectionHandler->updateState(m_config);
+        m_tcpServer->handleClientConnection(*m_tcpRequestProcessor);
 
         usleep(POLL_DELAY_USEC);
 
         notificationElapsedTime += POLL_DELAY_USEC;
         if (notificationElapsedTime >= notificationPeriod) {
-            emitNotifications();
+            m_connectionHandler->emitNotifications(m_config);
             notificationElapsedTime = 0;
         }
     }
@@ -74,90 +70,22 @@ int Session::run()
 
 bool Session::init()
 {
-    m_ethInterfaceNames = io::getEthernetInterfaceNames();
-    if (m_ethInterfaceNames.empty()) {
-        std::cout << "No Ethernet interfaces found. Exiting...";
+    Status status {m_connectionHandler->init()};
+    if (!status.isSuccess()) {
+        std::cout << status.getMessage() << std::endl;
         return false;
     }
-
-    m_frameSender = new FrameSender{};
-    Status status {m_frameSender->initOutputSockets(m_ethInterfaceNames, m_outputSockets)};
+    
+    m_tcpServer = new TcpServer{};
+    status = m_tcpServer->initConnection(m_config);
     if (!status.isSuccess()) {
         std::cout << status.getMessage() << std::endl;
         return false;
     }
 
-    m_frameReceiver = new FrameReceiver{};
-    status = m_frameReceiver->initInputSockets(m_ethInterfaceNames, m_inputSockets);
-    if (!status.isSuccess()) {
-        std::cout << status.getMessage() << std::endl;
-        return false;
-    }
+    m_tcpRequestProcessor = new TcpRequestProcessor{m_connectionHandler};
 
     return true;
-}
-
-void Session::updateConnections(const std::vector<EthernetConnection>& newConnections)
-{
-    for (const auto& ethConnection : newConnections) {
-        if (std::string ifName {getInterfaceName(ethConnection.socketFd)}; !ifName.empty()) {
-            if (!m_connections.contains(ifName)) {
-                m_connections[ifName] = {};
-            }
-
-            auto& connections {m_connections.at(ifName)};
-            auto connectionPtr {std::find_if(connections.begin(), connections.end(), 
-                [&ethConnection] (const EthernetConnection& ec) { 
-                    return ec.deviceMac == ethConnection.deviceMac;
-                }
-            )};
-
-            if (connectionPtr != connections.end()) {
-                connectionPtr->lastTimeSeenActiveMsec = ethConnection.lastTimeSeenActiveMsec;
-            }
-            else {
-                EthernetConnection newConnection {ethConnection};
-                newConnection.interfaceName = ifName;
-                connections.push_back(std::move(newConnection));
-            }
-        }
-    }
-}
-
-void Session::removeExpiredConnections()
-{
-    const size_t connectionExpirePeriodMsec {m_config->getConnectionExpirePeriodSec() * 1000};
-    int64_t nowMsec = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-        .count();
-
-    for (auto& [ifName, connections] : m_connections) {
-        connections.erase(std::remove_if(connections.begin(), connections.end(), 
-            [connectionExpirePeriodMsec, nowMsec] (const EthernetConnection& ec) { 
-                return (nowMsec - ec.lastTimeSeenActiveMsec) > connectionExpirePeriodMsec; 
-            }
-        ), connections.end());
-    }
-}
-
-void Session::emitNotifications()
-{
-    for (const auto& ethInterface : m_outputSockets) {
-        m_frameSender->sendNotificationFrame(m_config, ethInterface);
-    }
-}
-
-std::string Session::getInterfaceName(int socketFd) const
-{
-    auto ptr {std::find_if(m_inputSockets.begin(), m_inputSockets.end(), 
-        [socketFd] (const EthInterface& eth) { return eth.socketFd == socketFd; })};
-    return ptr != m_inputSockets.end() ? ptr->name : std::string{};
-}
-
-void Session::printMacAddress(const std::array<unsigned char, 6> &mac) const
-{
-    std::printf("%.02x:%.02x:%.02x:%.02x:%.02x:%.02x\n", 
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 } // namespace discoveryservice::daemon

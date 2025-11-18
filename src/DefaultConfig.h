@@ -12,6 +12,7 @@ public:
     const std::string& getServiceId() const override;
     size_t getNotificationPeriodUsec() const override;
     size_t getConnectionExpirePeriodSec() const override;
+    int ipcPort() const override;
 
 private:
     /**
@@ -21,7 +22,9 @@ private:
 
     size_t m_notificationPeriodUsec {1000000};  // 1 sec
 
-    size_t m_connectionExpirePeriodSec {10};
+    size_t m_connectionExpirePeriodSec {30};
+
+    int m_ipcPort {8090};
 };
 
 }; // namespace discoveryservice::daemon

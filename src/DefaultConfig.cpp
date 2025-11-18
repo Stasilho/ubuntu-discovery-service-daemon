@@ -18,4 +18,9 @@ size_t DefaultConfig::getConnectionExpirePeriodSec() const
     return m_connectionExpirePeriodSec;
 }
 
+int DefaultConfig::ipcPort() const
+{
+    return m_ipcPort;
+}
+
 }  // namespace discoveryservice::daemon
